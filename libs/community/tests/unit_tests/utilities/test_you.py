@@ -185,6 +185,31 @@ MOCK_CONTENTS_PARSED = [
     )
 ]
 
+MOCK_RESEARCH_RESPONSE: Dict[str, Any] = {
+    "output": {
+        "content": "Quantum computing has seen major advances recently.[1]",
+        "content_type": "text",
+        "sources": [
+            {
+                "url": "https://nature.com/quantum",
+                "title": "Nature Quantum",
+                "snippets": ["Major breakthroughs in qubit stability."],
+            },
+            {
+                "url": "https://arxiv.org/quantum",
+                "snippets": ["Error correction improvements."],
+            },
+        ],
+    }
+}
+
+MOCK_RESEARCH_TEXT = (
+    "Quantum computing has seen major advances recently.[1]"
+    "\n\n## Sources\n\n"
+    "1. [Nature Quantum](https://nature.com/quantum)\n"
+    "2. [https://arxiv.org/quantum](https://arxiv.org/quantum)"
+)
+
 
 @responses.activate
 def test_raw_results() -> None:
@@ -601,3 +626,99 @@ def test_news_livecrawl_prefers_contents_over_description() -> None:
     results = wrapper.results("test")
     assert len(results) == 1
     assert results[0].page_content == ("# Full News Article\n\nDetailed content here.")
+
+
+@responses.activate
+def test_raw_research() -> None:
+    responses.add(
+        responses.POST,
+        f"{TEST_ENDPOINT}/v1/research",
+        json=MOCK_RESEARCH_RESPONSE,
+        status=200,
+    )
+    wrapper = YouSearchAPIWrapper(ydc_api_key="test")
+    result = wrapper.raw_research("quantum computing advances")
+    assert result == MOCK_RESEARCH_RESPONSE
+
+
+@responses.activate
+def test_research_text() -> None:
+    responses.add(
+        responses.POST,
+        f"{TEST_ENDPOINT}/v1/research",
+        json=MOCK_RESEARCH_RESPONSE,
+        status=200,
+    )
+    wrapper = YouSearchAPIWrapper(ydc_api_key="test")
+    result = wrapper.research_text("quantum computing advances")
+    assert result == MOCK_RESEARCH_TEXT
+
+
+@responses.activate
+def test_research_effort_passed_through() -> None:
+    responses.add(
+        responses.POST,
+        f"{TEST_ENDPOINT}/v1/research",
+        json=MOCK_RESEARCH_RESPONSE,
+        status=200,
+    )
+    wrapper = YouSearchAPIWrapper(ydc_api_key="test", research_effort="deep")
+    wrapper.raw_research("test query")
+    import json
+
+    body = json.loads(responses.calls[0].request.body)
+    assert body["research_effort"] == "deep"
+
+
+@responses.activate
+def test_research_effort_omitted_when_none() -> None:
+    responses.add(
+        responses.POST,
+        f"{TEST_ENDPOINT}/v1/research",
+        json=MOCK_RESEARCH_RESPONSE,
+        status=200,
+    )
+    wrapper = YouSearchAPIWrapper(ydc_api_key="test")
+    wrapper.raw_research("test query")
+    import json
+
+    body = json.loads(responses.calls[0].request.body)
+    assert "research_effort" not in body
+
+
+def test_format_research_response_no_sources() -> None:
+    raw: Dict[str, Any] = {
+        "output": {"content": "Short answer.", "content_type": "text", "sources": []}
+    }
+    result = YouSearchAPIWrapper._format_research_response(raw)
+    assert result == "Short answer."
+
+
+async def test_raw_research_async() -> None:
+    wrapper = YouSearchAPIWrapper(ydc_api_key="test")
+
+    mock_response = AsyncMock()
+    mock_response.__aenter__.return_value = mock_response
+    mock_response.__aexit__.return_value = None
+    mock_response.status = 200
+    mock_response.json = AsyncMock(return_value=MOCK_RESEARCH_RESPONSE)
+    mock_response.raise_for_status = lambda: None
+
+    with patch("aiohttp.ClientSession.post", return_value=mock_response):
+        result = await wrapper.raw_research_async("quantum computing advances")
+        assert result == MOCK_RESEARCH_RESPONSE
+
+
+async def test_research_text_async() -> None:
+    wrapper = YouSearchAPIWrapper(ydc_api_key="test")
+
+    mock_response = AsyncMock()
+    mock_response.__aenter__.return_value = mock_response
+    mock_response.__aexit__.return_value = None
+    mock_response.status = 200
+    mock_response.json = AsyncMock(return_value=MOCK_RESEARCH_RESPONSE)
+    mock_response.raise_for_status = lambda: None
+
+    with patch("aiohttp.ClientSession.post", return_value=mock_response):
+        result = await wrapper.research_text_async("quantum computing advances")
+        assert result == MOCK_RESEARCH_TEXT

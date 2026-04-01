@@ -109,6 +109,89 @@ class YouSearchTool(BaseTool):
         return await self.api_wrapper.results_async(query)
 
 
+class YouResearchInput(BaseModel):
+    """Input schema for You.com research."""
+
+    query: str = Field(description="Research question or complex query to investigate")
+
+
+class YouResearchTool(BaseTool):
+    """Tool that researches a topic using the You.com Research API.
+
+    Returns a comprehensive, cited answer with multi-step reasoning.
+
+    Setup:
+        Set the ``YDC_API_KEY`` environment variable.
+
+        .. code-block:: bash
+
+            export YDC_API_KEY="your-api-key"
+
+    Instantiate:
+
+        .. code-block:: python
+
+            from langchain_community.tools.you import YouResearchTool
+            from langchain_community.utilities.you import YouSearchAPIWrapper
+
+            tool = YouResearchTool(
+                api_wrapper=YouSearchAPIWrapper(
+                    research_effort="standard",  # lite, standard, deep, exhaustive
+                )
+            )
+
+    Invoke directly with args:
+
+        .. code-block:: python
+
+            tool.invoke("what are the latest advances in quantum computing")
+
+        .. code-block:: python
+
+            "Quantum computing has seen significant advances...\n\n## Sources\n\n1. [Nature](https://nature.com/...)"
+
+    Invoke with tool call:
+
+        .. code-block:: python
+
+            tool.invoke({"args": {"query": "quantum computing advances"}, "type": "tool_call", "id": "1", "name": "you_research"})
+
+        .. code-block:: python
+
+            ToolMessage(
+                content="Quantum computing has seen...",
+                tool_call_id="1",
+                name="you_research",
+            )
+
+    """  # noqa: E501
+
+    name: str = "you_research"
+    description: str = (
+        "Research a topic in depth using You.com's Research API. Returns a "
+        "comprehensive answer with inline citations and a list of sources. "
+        "Best for complex questions that benefit from multi-step reasoning."
+    )
+    args_schema: Type[BaseModel] = YouResearchInput
+    api_wrapper: YouSearchAPIWrapper = Field(default_factory=YouSearchAPIWrapper)
+
+    def _run(
+        self,
+        query: str,
+        run_manager: Optional[CallbackManagerForToolRun] = None,
+    ) -> str:
+        """Research the query using the You.com Research API."""
+        return self.api_wrapper.research_text(query)
+
+    async def _arun(
+        self,
+        query: str,
+        run_manager: Optional[AsyncCallbackManagerForToolRun] = None,
+    ) -> str:
+        """Research the query using the You.com Research API asynchronously."""
+        return await self.api_wrapper.research_text_async(query)
+
+
 class YouContentsInput(BaseModel):
     """Input schema for You.com contents extraction."""
 

@@ -1,4 +1,4 @@
-"""Wrapper for You.com Search and Contents APIs.
+"""Wrapper for You.com Search, Contents, and Research APIs.
 
 For setup instructions and API key, visit:
 https://docs.you.com/get-started/quickstart
@@ -67,6 +67,7 @@ class YouSearchAPIWrapper(BaseModel):
 
     k: Optional[int] = None
     n_snippets_per_hit: Optional[int] = None
+    research_effort: Optional[Literal["lite", "standard", "deep", "exhaustive"]] = None
 
     # Deprecated fields kept for backwards compat
     num_web_results: Optional[int] = None
@@ -350,6 +351,97 @@ class YouSearchAPIWrapper(BaseModel):
             ) as response:
                 response.raise_for_status()
                 return self._parse_contents_results(await response.json())
+
+    def raw_research(self, query: str) -> Dict:
+        """Call the You.com Research API and return the raw JSON response.
+
+        Args:
+            query: The research question or complex query.
+
+        Returns:
+            Raw API response dict with ``output.content`` and
+            ``output.sources``.
+        """
+        headers = self._get_headers()
+        body: Dict[str, Any] = {"input": query}
+        if self.research_effort is not None:
+            body["research_effort"] = self.research_effort
+
+        response = requests.post(
+            f"{YOU_SEARCH_API_URL}/v1/research",
+            json=body,
+            headers=headers,
+        )
+        response.raise_for_status()
+        return response.json()
+
+    def research_text(self, query: str) -> str:
+        """Research a topic and return a formatted markdown answer with sources.
+
+        Args:
+            query: The research question or complex query.
+
+        Returns:
+            Markdown-formatted answer followed by a numbered sources section.
+        """
+        return self._format_research_response(self.raw_research(query))
+
+    async def raw_research_async(self, query: str) -> Dict:
+        """Async variant of :meth:`raw_research`.
+
+        Args:
+            query: The research question or complex query.
+
+        Returns:
+            Raw API response dict with ``output.content`` and
+            ``output.sources``.
+        """
+        headers = self._get_headers()
+        body: Dict[str, Any] = {"input": query}
+        if self.research_effort is not None:
+            body["research_effort"] = self.research_effort
+
+        async with aiohttp.ClientSession() as session:
+            async with session.post(
+                url=f"{YOU_SEARCH_API_URL}/v1/research",
+                json=body,
+                headers=headers,
+            ) as response:
+                response.raise_for_status()
+                return await response.json()
+
+    async def research_text_async(self, query: str) -> str:
+        """Async variant of :meth:`research_text`.
+
+        Args:
+            query: The research question or complex query.
+
+        Returns:
+            Markdown-formatted answer followed by a numbered sources section.
+        """
+        return self._format_research_response(await self.raw_research_async(query))
+
+    @staticmethod
+    def _format_research_response(raw: Dict) -> str:
+        """Format a raw research API response as markdown with a sources section.
+
+        Args:
+            raw: Raw JSON response dict from ``/v1/research``.
+
+        Returns:
+            Markdown answer followed by a numbered ``## Sources`` section.
+        """
+        output = raw.get("output", {})
+        parts: List[str] = [output.get("content", "")]
+        sources = output.get("sources", [])
+        if sources:
+            lines = ["", "## Sources", ""]
+            for i, src in enumerate(sources, 1):
+                title = src.get("title") or src.get("url", "")
+                url = src.get("url", "")
+                lines.append(f"{i}. [{title}]({url})")
+            parts.append("\n".join(lines))
+        return "\n".join(parts)
 
     @staticmethod
     def _parse_contents_results(raw_results: List[Dict]) -> List[Document]:
